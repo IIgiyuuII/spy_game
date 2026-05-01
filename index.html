@@ -184,177 +184,217 @@
     </div>
 
     <script>
-        let ws;
-        let currentScreen = 'menu';
-        let isAdmin = false;
-        let currentRoomCode = '';
-        
-        // Инициализация Telegram Mini App
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-        
-        function showScreen(screenId) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById(screenId).classList.add('active');
-            currentScreen = screenId;
+    let ws;
+    let currentScreen = 'menu';
+    let isAdmin = false;
+    let currentRoomCode = '';
+
+    // Безопасная инициализация Telegram Mini App
+    try {
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
         }
-        
-        async function createRoom() {
-            const username = document.getElementById('username').value.trim();
-            if (!username) {
-                alert('Введите имя!');
-                return;
-            }
-            
-            // Подключаемся к WebSocket
-            connectWebSocket(username);
-            
-            // Ждем подключения и отправляем запрос
-            ws.onopen = () => {
-                ws.send(JSON.stringify({
-                    type: 'create_room',
-                    username: username
-                }));
-            };
+    } catch (e) {
+        console.log('Не в Telegram окружении, работаем в браузере');
+    }
+
+    function showScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+        currentScreen = screenId;
+    }
+
+    async function createRoom() {
+        const username = document.getElementById('username').value.trim();
+        if (!username) {
+            alert('Введите имя!');
+            return;
         }
-        
-        function showJoinScreen() {
-            const username = document.getElementById('username').value.trim();
-            if (!username) {
-                alert('Введите имя!');
-                return;
-            }
-            showScreen('join');
+
+        // Подключаемся к WebSocket
+        connectWebSocket(username);
+
+        // Ждем подключения и отправляем запрос
+        ws.onopen = () => {
+            ws.send(JSON.stringify({
+                type: 'create_room',
+                username: username
+            }));
+        };
+    }
+
+    function showJoinScreen() {
+        const username = document.getElementById('username').value.trim();
+        if (!username) {
+            alert('Введите имя!');
+            return;
         }
-        
-        function joinRoom() {
-            const username = document.getElementById('username').value.trim();
-            const roomCode = document.getElementById('roomCode').value.trim().toUpperCase();
-            
-            if (!roomCode) {
-                document.getElementById('joinError').textContent = 'Введите код комнаты';
-                return;
-            }
-            
-            connectWebSocket(username);
-            
-            ws.onopen = () => {
-                ws.send(JSON.stringify({
-                    type: 'join_room',
-                    username: username,
-                    roomCode: roomCode
-                }));
-            };
+        showScreen('join');
+    }
+
+    function joinRoom() {
+        const username = document.getElementById('username').value.trim();
+        const roomCode = document.getElementById('roomCode').value.trim().toUpperCase();
+
+        if (!roomCode) {
+            document.getElementById('joinError').textContent = 'Введите код комнаты';
+            return;
         }
-        
-        function connectWebSocket(username) {
-            // Замени на URL твоего сервера
-            const ws = new WebSocket('https://spy-game-backend-11qd.onrender.com/'); // Для локальной разработки используй 'ws://localhost:3000'
-            ws = new WebSocket(wsUrl);
-            
-            ws.onmessage = (event) => {
+
+        connectWebSocket(username);
+
+        ws.onopen = () => {
+            ws.send(JSON.stringify({
+                type: 'join_room',
+                username: username,
+                roomCode: roomCode
+            }));
+        };
+    }
+
+    function connectWebSocket(username) {
+        // Закрываем предыдущее соединение если есть
+        if (ws) {
+            ws.close();
+        }
+
+        // Правильный URL WebSocket сервера (обрати внимание на wss:// и отсутствие слеша в конце)
+        const wsUrl = 'wss://spy-game-backend-11qd.onrender.com';
+
+        console.log('Подключаюсь к:', wsUrl);
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WebSocket подключен');
+        };
+
+        ws.onmessage = (event) => {
+            try {
                 const data = JSON.parse(event.data);
+                console.log('Получено сообщение:', data);
                 handleMessage(data);
-            };
-            
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                alert('Ошибка подключения к серверу');
-            };
-        }
-        
-        function handleMessage(data) {
-            switch(data.type) {
-                case 'room_created':
-                    currentRoomCode = data.roomCode;
-                    document.getElementById('currentRoomCode').textContent = data.roomCode;
-                    updatePlayersList(data.players);
-                    showScreen('lobby');
-                    isAdmin = true;
-                    document.getElementById('startGameBtn').style.display = 'block';
-                    break;
-                    
-                case 'room_joined':
-                    currentRoomCode = data.roomCode;
-                    document.getElementById('currentRoomCode').textContent = data.roomCode;
-                    updatePlayersList(data.players);
-                    showScreen('lobby');
-                    isAdmin = data.isAdmin;
-                    document.getElementById('startGameBtn').style.display = data.isAdmin ? 'block' : 'none';
-                    break;
-                    
-                case 'players_update':
-                    updatePlayersList(data.players);
-                    break;
-                    
-                case 'game_started':
-                    showScreen('game');
-                    displayGameData(data);
-                    document.getElementById('newRoundBtn').style.display = data.isAdmin ? 'block' : 'none';
-                    break;
-                    
-                case 'new_round':
-                    displayGameData(data);
-                    break;
-                    
-                case 'error':
+            } catch (error) {
+                console.error('Ошибка парсинга сообщения:', error);
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket ошибка:', error);
+            alert('Ошибка подключения к серверу. Проверьте, работает ли сервер.');
+        };
+
+        ws.onclose = (event) => {
+            console.log('WebSocket закрыт:', event.code, event.reason);
+        };
+    }
+
+    function handleMessage(data) {
+        switch(data.type) {
+            case 'room_created':
+                currentRoomCode = data.roomCode;
+                document.getElementById('currentRoomCode').textContent = data.roomCode;
+                updatePlayersList(data.players);
+                showScreen('lobby');
+                isAdmin = true;
+                document.getElementById('startGameBtn').style.display = 'block';
+                break;
+
+            case 'room_joined':
+                currentRoomCode = data.roomCode;
+                document.getElementById('currentRoomCode').textContent = data.roomCode;
+                updatePlayersList(data.players);
+                showScreen('lobby');
+                isAdmin = data.isAdmin;
+                document.getElementById('startGameBtn').style.display = data.isAdmin ? 'block' : 'none';
+                break;
+
+            case 'players_update':
+                updatePlayersList(data.players);
+                break;
+
+            case 'game_started':
+                showScreen('game');
+                displayGameData(data);
+                document.getElementById('newRoundBtn').style.display = data.isAdmin ? 'block' : 'none';
+                break;
+
+            case 'new_round':
+                displayGameData(data);
+                break;
+
+            case 'error':
+                if (document.getElementById('joinError')) {
                     document.getElementById('joinError').textContent = data.message;
-                    break;
-            }
+                } else {
+                    alert(data.message);
+                }
+                break;
         }
-        
-        function updatePlayersList(players) {
-            const listHtml = players.map(p => 
-                `<div class="player-item">
-                    <span>${p.username}</span>
-                    <span>${p.isAdmin ? '👑' : ''}</span>
-                </div>`
-            ).join('');
-            
-            document.getElementById('playerList').innerHTML = listHtml;
+    }
+
+    function updatePlayersList(players) {
+        const listHtml = players.map(p => 
+            `<div class="player-item">
+                <span>${p.username}</span>
+                <span>${p.isAdmin ? '👑' : ''}</span>
+            </div>`
+        ).join('');
+
+        document.getElementById('playerList').innerHTML = listHtml;
+    }
+
+    function displayGameData(data) {
+        const imageEl = document.getElementById('gameImage');
+        const spyEl = document.getElementById('spyIndicator');
+        const statusEl = document.getElementById('gameStatus');
+
+        if (data.isSpy) {
+            imageEl.style.display = 'none';
+            spyEl.style.display = 'block';
+            statusEl.textContent = 'Ты шпион! 🕵️';
+        } else {
+            imageEl.src = data.image;
+            imageEl.style.display = 'block';
+            spyEl.style.display = 'none';
+            statusEl.textContent = 'Запомни локацию';
         }
-        
-        function displayGameData(data) {
-            const imageEl = document.getElementById('gameImage');
-            const spyEl = document.getElementById('spyIndicator');
-            const statusEl = document.getElementById('gameStatus');
-            
-            if (data.isSpy) {
-                imageEl.style.display = 'none';
-                spyEl.style.display = 'block';
-                statusEl.textContent = 'Ты шпион! 🕵️';
-            } else {
-                imageEl.src = data.image;
-                imageEl.style.display = 'block';
-                spyEl.style.display = 'none';
-                statusEl.textContent = 'Запомни локацию';
-            }
+    }
+
+    function startGame() {
+        if (!isAdmin || !ws || ws.readyState !== WebSocket.OPEN) {
+            alert('Нет подключения к серверу');
+            return;
         }
-        
-        function startGame() {
-            if (!isAdmin) return;
-            ws.send(JSON.stringify({ type: 'start_game' }));
+        ws.send(JSON.stringify({ type: 'start_game' }));
+    }
+
+    function newRound() {
+        if (!isAdmin || !ws || ws.readyState !== WebSocket.OPEN) {
+            alert('Нет подключения к серверу');
+            return;
         }
-        
-        function newRound() {
-            if (!isAdmin) return;
-            ws.send(JSON.stringify({ type: 'new_round' }));
+        ws.send(JSON.stringify({ type: 'new_round' }));
+    }
+
+    function leaveRoom() {
+        if (ws) ws.close();
+        goToMenu();
+    }
+
+    function leaveGame() {
+        if (ws) ws.close();
+        goToMenu();
+    }
+
+    function goToMenu() {
+        showScreen('menu');
+        if (ws) {
+            ws.close();
+            ws = null;
         }
-        
-        function leaveRoom() {
-            if (ws) ws.close();
-            goToMenu();
-        }
-        
-        function leaveGame() {
-            if (ws) ws.close();
-            goToMenu();
-        }
-        
-        function goToMenu() {
-            showScreen('menu');
-            if (ws) ws.close();
-        }
-    </script>
+    }
+</script>
 </body>
 </html>
