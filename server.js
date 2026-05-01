@@ -6,7 +6,38 @@ const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+
+// Настройка CORS для всех запросов
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
+
+// Добавь это - обработчик главной страницы
+app.get('/', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    message: 'Spy Game Server is running',
+    endpoints: {
+      websocket: 'wss://spy-game-backend-11qd.onrender.com',
+      version: '1.0.0'
+    }
+  });
+});
+
+// Health check для Render
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy', rooms: rooms.size });
+});
+
+const wss = new WebSocket.Server({ 
+  server,
+  // Добавь это для обработки WebSocket upgrade запросов
+  handleProtocols: (protocols, request) => {
+    return protocols[0] || '';
+  }
+});
 
 // Хранилище комнат
 const rooms = new Map();
