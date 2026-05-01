@@ -329,6 +329,25 @@
                 document.getElementById('startGameBtn').style.display = 'block';
                 break;
 
+
+            case 'admin_changed':
+            updatePlayersList(data.players);
+            // Проверяем, стали ли мы новым админом
+            if (data.newAdminId === currentPlayerId) {
+                isAdmin = true;
+                document.getElementById('startGameBtn').style.display = 'block';
+                document.getElementById('newRoundBtn').style.display = 'block';
+            } else {
+                isAdmin = false;
+                document.getElementById('startGameBtn').style.display = 'none';
+                document.getElementById('newRoundBtn').style.display = 'none';
+            }
+            break;
+
+            case 'you_are_admin_now':
+            alert(data.message);
+            break;
+
             case 'room_joined':
                 currentRoomCode = data.roomCode;
                 document.getElementById('currentRoomCode').textContent = data.roomCode;

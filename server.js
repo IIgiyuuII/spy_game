@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -7,14 +6,12 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const server = http.createServer(app);
 
-// Настройка CORS для всех запросов
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   next();
 });
 
-// Добавь это - обработчик главной страницы
 app.get('/', (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -26,38 +23,33 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health check для Render
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', rooms: rooms.size });
 });
 
 const wss = new WebSocket.Server({ 
   server,
-  // Добавь это для обработки WebSocket upgrade запросов
   handleProtocols: (protocols, request) => {
     return protocols[0] || '';
   }
 });
 
-// Хранилище комнат
 const rooms = new Map();
 
-// Заготовленные ссылки на картинки
 const imagePool = [
-  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/5e78080e3427ec11e4a2c5f132fbf1f9.gif',
-  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/PhotoLab2_1.jpg',
-  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/Screenshot_117.jpg',
-  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/Screenshot_31.jpg',
-  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/Screenshot_73.jpg',
-  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/uQkhhR1hSi2FH-IwCqhTXFuNhnisOp41hI8tPwaCHNdDq6N2MyMfwRa8igRj7w7HwdwB1o5dhL8Rjs3ph4PTqhQv.jpg',
-  // Добавь свои ссылки позже
+  'https://raw.githubusercontent.com/IIgiyuuII/spy_game/main/public/images/5e78080e3427ec11e4a2c5f132fbf1f9.gif',
+  'https://raw.githubusercontent.com/IIgiyuuII/spy_game/main/public/images/PhotoLab2_1.jpg',
+  'https://raw.githubusercontent.com/IIgiyuuII/spy_game/main/public/images/Screenshot_117.jpg',
+  'https://raw.githubusercontent.com/IIgiyuuII/spy_game/main/public/images/Screenshot_31.jpg',
+  'https://raw.githubusercontent.com/IIgiyuuII/spy_game/main/public/images/Screenshot_73.jpg',
+  'https://raw.githubusercontent.com/IIgiyuuII/spy_game/main/public/images/uQkhhR1hSi2FH-IwCqhTXFuNhnisOp41hI8tPwaCHNdDq6N2MyMfwRa8igRj7w7HwdwB1o5dhL8Rjs3ph4PTqhQv.jpg',
 ];
 
 class Room {
   constructor(code, adminId) {
     this.code = code;
     this.adminId = adminId;
-    this.players = new Map(); // playerId -> { ws, username, isSpy }
+    this.players = new Map();
     this.gameStarted = false;
     this.currentRoundImage = null;
   }
@@ -68,6 +60,47 @@ class Room {
 
   removePlayer(playerId) {
     this.players.delete(playerId);
+    
+    // Если админ вышел и есть другие игроки - передаем лидерство
+    if (this.adminId === playerId && this.players.size > 0) {
+      this.transferAdmin();
+    }
+  }
+
+  // Новая функция передачи прав админа
+  transferAdmin() {
+    if (this.players.size === 0) return;
+    
+    // Выбираем случайного игрока новым админом
+    const playersArray = Array.from(this.players.keys());
+    const randomIndex = Math.floor(Math.random() * playersArray.length);
+    const newAdminId = playersArray[randomIndex];
+    this.adminId = newAdminId;
+    
+    // Уведомляем всех о новом админе
+    this.broadcastToAll({
+      type: 'admin_changed',
+      newAdminId: newAdminId,
+      players: this.getPlayersList()
+    });
+    
+    // Отдельно уведомляем нового админа
+    const newAdmin = this.players.get(newAdminId);
+    if (newAdmin && newAdmin.ws) {
+      newAdmin.ws.send(JSON.stringify({
+        type: 'you_are_admin_now',
+        message: 'Вы стали администратором комнаты!'
+      }));
+    }
+  }
+
+  broadcastToAll(message) {
+    const msgString = JSON.stringify(message);
+    this.players.forEach(player => {
+      if (player.ws && player.ws.readyState === WebSocket.OPEN) {
+        player.ws.send(msgString);
+      }
+    });
   }
 
   getPlayersList() {
@@ -79,18 +112,15 @@ class Room {
   }
 
   startNewRound() {
-    if (this.players.size < 3) return false; // Минимум 3 игрока
+    if (this.players.size < 3) return false;
     
-    // Выбираем случайную картинку для раунда
     const imageIndex = Math.floor(Math.random() * imagePool.length);
     this.currentRoundImage = imagePool[imageIndex];
     
-    // Выбираем шпиона
     const playersArray = Array.from(this.players.keys());
     const spyIndex = Math.floor(Math.random() * playersArray.length);
     const spyId = playersArray[spyIndex];
     
-    // Сбрасываем статусы
     this.players.forEach((player, id) => {
       player.isSpy = (id === spyId);
     });
@@ -103,7 +133,6 @@ class Room {
   }
 }
 
-// WebSocket обработка
 wss.on('connection', (ws) => {
   let currentPlayerId = uuidv4();
   let currentRoom = null;
@@ -124,7 +153,8 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({
           type: 'room_created',
           roomCode: roomCode,
-          players: newRoom.getPlayersList()
+          players: newRoom.getPlayersList(),
+          isAdmin: true
         }));
         break;
         
@@ -139,7 +169,6 @@ wss.on('connection', (ws) => {
         room.addPlayer(currentPlayerId, ws, currentUsername);
         currentRoom = room;
         
-        // Отправляем обновленный список всем игрокам
         broadcastToRoom(room, {
           type: 'players_update',
           players: room.getPlayersList()
@@ -162,12 +191,12 @@ wss.on('connection', (ws) => {
           return;
         }
         
-        // Отправляем каждому игроку его роль
         currentRoom.players.forEach((player, playerId) => {
+          const isSpy = playerId === roundData.spyId;
           player.ws.send(JSON.stringify({
             type: 'game_started',
-            image: player.isSpy ? null : roundData.image,
-            isSpy: player.isSpy,
+            image: isSpy ? null : roundData.image,
+            isSpy: isSpy,
             isAdmin: playerId === currentRoom.adminId
           }));
         });
@@ -180,10 +209,11 @@ wss.on('connection', (ws) => {
         if (!newRoundData) return;
         
         currentRoom.players.forEach((player, playerId) => {
+          const isSpy = playerId === newRoundData.spyId;
           player.ws.send(JSON.stringify({
             type: 'new_round',
-            image: player.isSpy ? null : newRoundData.image,
-            isSpy: player.isSpy
+            image: isSpy ? null : newRoundData.image,
+            isSpy: isSpy
           }));
         });
         break;
@@ -209,7 +239,9 @@ wss.on('connection', (ws) => {
 function broadcastToRoom(room, message) {
   const msgString = JSON.stringify(message);
   room.players.forEach(player => {
-    player.ws.send(msgString);
+    if (player.ws && player.ws.readyState === WebSocket.OPEN) {
+      player.ws.send(msgString);
+    }
   });
 }
 
