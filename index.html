@@ -249,7 +249,7 @@
         
         function connectWebSocket(username) {
             // Замени на URL твоего сервера
-            const wsUrl = 'wss://your-server.com'; // Для локальной разработки используй 'ws://localhost:3000'
+            const ws = new WebSocket('https://spy-game-backend-11qd.onrender.com/'); // Для локальной разработки используй 'ws://localhost:3000'
             ws = new WebSocket(wsUrl);
             
             ws.onmessage = (event) => {
