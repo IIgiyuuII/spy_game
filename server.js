@@ -44,12 +44,12 @@ const rooms = new Map();
 
 // Заготовленные ссылки на картинки
 const imagePool = [
-  'https://picsum.photos/400/300?random=1',
-  'https://picsum.photos/400/300?random=2',
-  'https://picsum.photos/400/300?random=3',
-  'https://picsum.photos/400/300?random=4',
-  'https://picsum.photos/400/300?random=5',
-  'https://picsum.photos/400/300?random=6',
+  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/5e78080e3427ec11e4a2c5f132fbf1f9.gif',
+  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/PhotoLab2_1.jpg',
+  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/Screenshot_117.jpg',
+  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/Screenshot_31.jpg',
+  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/Screenshot_73.jpg',
+  'https://github.com/IIgiyuuII/spy_game/blob/main/public/images/uQkhhR1hSi2FH-IwCqhTXFuNhnisOp41hI8tPwaCHNdDq6N2MyMfwRa8igRj7w7HwdwB1o5dhL8Rjs3ph4PTqhQv.jpg',
   // Добавь свои ссылки позже
 ];
 
