@@ -1,0 +1,360 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spy Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a2e;
+            color: white;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .screen {
+            display: none;
+            padding: 20px;
+            background: #16213e;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .screen.active {
+            display: block;
+        }
+        
+        h1, h2 {
+            color: #e94560;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .btn {
+            background: #e94560;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+            transition: all 0.3s;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            background: #ff6b81;
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #e94560;
+            background: #0f3460;
+            color: white;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        
+        .player-list {
+            margin: 20px 0;
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 8px;
+        }
+        
+        .player-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: #16213e;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .game-area {
+            text-align: center;
+        }
+        
+        .game-image {
+            max-width: 100%;
+            border-radius: 10px;
+            margin: 20px 0;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        
+        .spy-text {
+            font-size: 48px;
+            color: #e94560;
+            font-weight: bold;
+            margin: 30px 0;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .room-code {
+            font-size: 32px;
+            color: #00ff88;
+            text-align: center;
+            margin: 20px 0;
+            font-weight: bold;
+            letter-spacing: 5px;
+        }
+        
+        .admin-controls {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e94560;
+        }
+        
+        .error {
+            color: #ff4444;
+            text-align: center;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Главное меню -->
+        <div id="menu" class="screen active">
+            <h1>🕵️ Spy Game</h1>
+            <input type="text" id="username" placeholder="Введите ваше имя" maxlength="20">
+            <button class="btn" onclick="createRoom()">Создать комнату</button>
+            <button class="btn" onclick="showJoinScreen()">Присоединиться</button>
+        </div>
+        
+        <!-- Экран присоединения -->
+        <div id="join" class="screen">
+            <h2>Присоединиться к игре</h2>
+            <input type="text" id="roomCode" placeholder="Введите код комнаты">
+            <button class="btn" onclick="joinRoom()">Войти</button>
+            <button class="btn" onclick="goToMenu()">Назад</button>
+            <div id="joinError" class="error"></div>
+        </div>
+        
+        <!-- Лобби -->
+        <div id="lobby" class="screen">
+            <h2>Лобби</h2>
+            <div class="room-code" id="currentRoomCode"></div>
+            <div class="player-list" id="playerList"></div>
+            <button class="btn" id="startGameBtn" onclick="startGame()">Начать игру</button>
+            <button class="btn" onclick="leaveRoom()">Покинуть комнату</button>
+        </div>
+        
+        <!-- Игровой экран -->
+        <div id="game" class="screen">
+            <div class="game-area">
+                <h2 id="gameStatus"></h2>
+                <img id="gameImage" class="game-image" style="display:none;">
+                <div id="spyIndicator" class="spy-text" style="display:none;">ШПИОН</div>
+                <button class="btn admin-only" id="newRoundBtn" onclick="newRound()" style="display:none;">
+                    Новый раунд
+                </button>
+                <button class="btn" onclick="leaveGame()">Выйти из игры</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let currentScreen = 'menu';
+        let isAdmin = false;
+        let currentRoomCode = '';
+        
+        // Инициализация Telegram Mini App
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+        
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            currentScreen = screenId;
+        }
+        
+        async function createRoom() {
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                alert('Введите имя!');
+                return;
+            }
+            
+            // Подключаемся к WebSocket
+            connectWebSocket(username);
+            
+            // Ждем подключения и отправляем запрос
+            ws.onopen = () => {
+                ws.send(JSON.stringify({
+                    type: 'create_room',
+                    username: username
+                }));
+            };
+        }
+        
+        function showJoinScreen() {
+            const username = document.getElementById('username').value.trim();
+            if (!username) {
+                alert('Введите имя!');
+                return;
+            }
+            showScreen('join');
+        }
+        
+        function joinRoom() {
+            const username = document.getElementById('username').value.trim();
+            const roomCode = document.getElementById('roomCode').value.trim().toUpperCase();
+            
+            if (!roomCode) {
+                document.getElementById('joinError').textContent = 'Введите код комнаты';
+                return;
+            }
+            
+            connectWebSocket(username);
+            
+            ws.onopen = () => {
+                ws.send(JSON.stringify({
+                    type: 'join_room',
+                    username: username,
+                    roomCode: roomCode
+                }));
+            };
+        }
+        
+        function connectWebSocket(username) {
+            // Замени на URL твоего сервера
+            const wsUrl = 'wss://your-server.com'; // Для локальной разработки используй 'ws://localhost:3000'
+            ws = new WebSocket(wsUrl);
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                alert('Ошибка подключения к серверу');
+            };
+        }
+        
+        function handleMessage(data) {
+            switch(data.type) {
+                case 'room_created':
+                    currentRoomCode = data.roomCode;
+                    document.getElementById('currentRoomCode').textContent = data.roomCode;
+                    updatePlayersList(data.players);
+                    showScreen('lobby');
+                    isAdmin = true;
+                    document.getElementById('startGameBtn').style.display = 'block';
+                    break;
+                    
+                case 'room_joined':
+                    currentRoomCode = data.roomCode;
+                    document.getElementById('currentRoomCode').textContent = data.roomCode;
+                    updatePlayersList(data.players);
+                    showScreen('lobby');
+                    isAdmin = data.isAdmin;
+                    document.getElementById('startGameBtn').style.display = data.isAdmin ? 'block' : 'none';
+                    break;
+                    
+                case 'players_update':
+                    updatePlayersList(data.players);
+                    break;
+                    
+                case 'game_started':
+                    showScreen('game');
+                    displayGameData(data);
+                    document.getElementById('newRoundBtn').style.display = data.isAdmin ? 'block' : 'none';
+                    break;
+                    
+                case 'new_round':
+                    displayGameData(data);
+                    break;
+                    
+                case 'error':
+                    document.getElementById('joinError').textContent = data.message;
+                    break;
+            }
+        }
+        
+        function updatePlayersList(players) {
+            const listHtml = players.map(p => 
+                `<div class="player-item">
+                    <span>${p.username}</span>
+                    <span>${p.isAdmin ? '👑' : ''}</span>
+                </div>`
+            ).join('');
+            
+            document.getElementById('playerList').innerHTML = listHtml;
+        }
+        
+        function displayGameData(data) {
+            const imageEl = document.getElementById('gameImage');
+            const spyEl = document.getElementById('spyIndicator');
+            const statusEl = document.getElementById('gameStatus');
+            
+            if (data.isSpy) {
+                imageEl.style.display = 'none';
+                spyEl.style.display = 'block';
+                statusEl.textContent = 'Ты шпион! 🕵️';
+            } else {
+                imageEl.src = data.image;
+                imageEl.style.display = 'block';
+                spyEl.style.display = 'none';
+                statusEl.textContent = 'Запомни локацию';
+            }
+        }
+        
+        function startGame() {
+            if (!isAdmin) return;
+            ws.send(JSON.stringify({ type: 'start_game' }));
+        }
+        
+        function newRound() {
+            if (!isAdmin) return;
+            ws.send(JSON.stringify({ type: 'new_round' }));
+        }
+        
+        function leaveRoom() {
+            if (ws) ws.close();
+            goToMenu();
+        }
+        
+        function leaveGame() {
+            if (ws) ws.close();
+            goToMenu();
+        }
+        
+        function goToMenu() {
+            showScreen('menu');
+            if (ws) ws.close();
+        }
+    </script>
+</body>
+</html>
