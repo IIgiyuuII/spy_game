@@ -189,20 +189,68 @@
     let isAdmin = false;
     let currentRoomCode = '';
 
-    // Безопасная инициализация Telegram Mini App
+    // Безопасный запуск Telegram WebApp
     try {
-        if (window.Telegram && window.Telegram.WebApp) {
+        if (typeof window.Telegram !== 'undefined' && window.Telegram.WebApp) {
             window.Telegram.WebApp.ready();
             window.Telegram.WebApp.expand();
         }
     } catch (e) {
-        console.log('Не в Telegram окружении, работаем в браузере');
+        console.log('Не в Telegram окружении');
     }
 
     function showScreen(screenId) {
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         document.getElementById(screenId).classList.add('active');
         currentScreen = screenId;
+    }
+
+    function connectWebSocket() {
+        // Закрываем старое соединение
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
+
+        // ПРАВИЛЬНЫЙ URL - без слеша в конце
+        const WS_URL = 'wss://spy-game-backend-11qd.onrender.com';
+        
+        console.log('Connecting to:', WS_URL);
+        
+        try {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected successfully');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received:', data);
+                    handleMessage(data);
+                } catch (e) {
+                    console.error('Parse error:', e);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                setTimeout(() => {
+                    alert('Не удалось подключиться к серверу. Проверьте интернет-соединение.');
+                }, 100);
+            };
+
+            ws.onclose = (event) => {
+                console.log('WebSocket closed:', event.code, event.reason);
+            };
+
+            return ws;
+        } catch (e) {
+            console.error('Connection error:', e);
+            alert('Ошибка создания подключения');
+            return null;
+        }
     }
 
     async function createRoom() {
@@ -212,16 +260,24 @@
             return;
         }
 
-        // Подключаемся к WebSocket
-        connectWebSocket(username);
+        const socket = connectWebSocket();
+        if (!socket) return;
 
-        // Ждем подключения и отправляем запрос
-        ws.onopen = () => {
-            ws.send(JSON.stringify({
+        // Ждем открытия соединения
+        socket.onopen = () => {
+            socket.send(JSON.stringify({
                 type: 'create_room',
                 username: username
             }));
         };
+
+        // Если соединение уже открыто
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'create_room',
+                username: username
+            }));
+        }
     }
 
     function showJoinScreen() {
@@ -242,52 +298,24 @@
             return;
         }
 
-        connectWebSocket(username);
+        const socket = connectWebSocket();
+        if (!socket) return;
 
-        ws.onopen = () => {
-            ws.send(JSON.stringify({
+        socket.onopen = () => {
+            socket.send(JSON.stringify({
                 type: 'join_room',
                 username: username,
                 roomCode: roomCode
             }));
         };
-    }
 
-    function connectWebSocket(username) {
-        // Закрываем предыдущее соединение если есть
-        if (ws) {
-            ws.close();
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'join_room',
+                username: username,
+                roomCode: roomCode
+            }));
         }
-
-        // Правильный URL WebSocket сервера (обрати внимание на wss:// и отсутствие слеша в конце)
-        const wsUrl = 'wss://spy-game-backend-11qd.onrender.com';
-
-        console.log('Подключаюсь к:', wsUrl);
-
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-            console.log('WebSocket подключен');
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                console.log('Получено сообщение:', data);
-                handleMessage(data);
-            } catch (error) {
-                console.error('Ошибка парсинга сообщения:', error);
-            }
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket ошибка:', error);
-            alert('Ошибка подключения к серверу. Проверьте, работает ли сервер.');
-        };
-
-        ws.onclose = (event) => {
-            console.log('WebSocket закрыт:', event.code, event.reason);
-        };
     }
 
     function handleMessage(data) {
@@ -325,11 +353,7 @@
                 break;
 
             case 'error':
-                if (document.getElementById('joinError')) {
-                    document.getElementById('joinError').textContent = data.message;
-                } else {
-                    alert(data.message);
-                }
+                alert(data.message);
                 break;
         }
     }
@@ -363,29 +387,23 @@
     }
 
     function startGame() {
-        if (!isAdmin || !ws || ws.readyState !== WebSocket.OPEN) {
-            alert('Нет подключения к серверу');
-            return;
-        }
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ type: 'start_game' }));
     }
 
     function newRound() {
-        if (!isAdmin || !ws || ws.readyState !== WebSocket.OPEN) {
-            alert('Нет подключения к серверу');
-            return;
-        }
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ type: 'new_round' }));
     }
 
     function leaveRoom() {
         if (ws) ws.close();
-        goToMenu();
+        showScreen('menu');
     }
 
     function leaveGame() {
         if (ws) ws.close();
-        goToMenu();
+        showScreen('menu');
     }
 
     function goToMenu() {
